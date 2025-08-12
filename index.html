@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSV正解率計算機</title>
+  <style>
+    :root { 
+      --bg:#f2f5fa; 
+      --card:#ffffff; 
+      --ink:#1a1a1a; 
+      --muted:#555; 
+      --accent:#0b63ff; 
+      --accent-hover:#084dcc;
+      --border: rgba(0,0,0,.08);
+      --bad:#ff5d7a; 
+      --good:#2cd4a3; 
+      --table-stripe:#f7f9fc;
+    }
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:linear-gradient(120deg,var(--bg),#e8eef7);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Noto Sans JP','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif
+    }
+    .wrap{max-width:1000px;margin:32px auto;padding:0 20px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 6px 18px rgba(8,22,48,.08)}
+    header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;gap:16px;align-items:center}
+    header h1{font-size:22px;margin:0;letter-spacing:.02em}
+    header small{color:var(--muted)}
+    .content{padding:20px 24px}
+    .controls{display:grid;grid-template-columns:1fr;gap:16px}
+    .controls .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    input[type="file"]{max-width:100%}
+    select,input[type="number"],input[type="text"],button{background:#fff;color:var(--ink);border:1px solid var(--border);padding:10px 12px;border-radius:10px}
+    button{cursor:pointer;transition:.15s ease}
+    button.primary{background:var(--accent);color:#fff;border:none;font-weight:600}
+    button.primary:hover{background:var(--accent-hover)}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .metrics{display:flex;gap:16px;flex-wrap:wrap;margin:18px 0}
+    .metric{background:#fff;border:1px solid var(--border);padding:14px 16px;border-radius:12px}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:14px}
+    .tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+    table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+    th{background:#f3f6ff;font-weight:700}
+    tbody tr:nth-child(odd){background:var(--table-stripe)}
+    tr:last-child td{border-bottom:none}
+    .pill{display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--border); white-space:nowrap;}
+    .bad{background:#ffe6eb;border-color:#ffc2cf;color:#a10022}
+    .good{background:#e9fbf5;border-color:#c3f2e6;color:#076d55}
+    .warn{background:#eef5ff;border-color:#cfe2ff;color:#0c3e8c}
+    details{background:#fff;border:1px solid var(--border);padding:12px 14px;border-radius:12px}
+    summary{cursor:pointer;font-weight:600}
+    pre{background:#f7f9fc;border:1px solid var(--border);padding:12px;border-radius:10px;overflow:auto;max-height:240px}
+    footer{color:var(--muted);font-size:12px;margin-top:18px}
+    a{color:var(--accent);text-decoration:underline}
+    a:hover{color:var(--accent-hover)}
+    a:focus{outline:2px solid var(--accent);outline-offset:2px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <h1>CSV正解率計算機</h1>
+        <small>複数のCSVファイルをまとめて読み込み、分野/大分類/中分類ごとの正解率を計算します。</small>
+      </header>
+      <div class="content">
+        <div class="controls grid">
+          <div class="row">
+            <label class="muted">CSVファイル選択（複数可）</label>
+            <input id="fileInput" type="file" accept=".csv" multiple />
+            <button id="loadBtn" class="primary">読み込む</button>
+          </div>
+          <div class="row">
+            <label for="threshold">苦手判定しきい値（% 以下を苦手）</label>
+            <input id="threshold" type="number" value="50" min="0" max="100" step="1" />
+            <button id="recalcBtn">再計算</button>
+            <span class="muted" id="avgHint"></span>
+          </div>
+        </div>
+
+        <div class="metrics" id="metrics" style="display:none">
+          <div class="metric" id="totalQ">問題数: -</div>
+          <div class="metric" id="totalA">正解数: -</div>
+          <div class="metric" id="totalR">正解率: -</div>
+        </div>
+
+        <div class="tables" id="tables" style="display:none">
+          <div>
+            <h3>分野</h3>
+            <table id="tblField">
+              <thead><tr><th>名称</th><th>正解率</th><th>内訳</th><th>判定</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div>
+            <h3>大分類</h3>
+            <table id="tblMajor">
+              <thead><tr><th>名称</th><th>正解率</th><th>内訳</th><th>判定</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div>
+            <h3>中分類</h3>
+            <table id="tblMiddle">
+              <thead><tr><th>名称</th><th>正解率</th><th>内訳</th><th>判定</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <details open>
+          <summary>使い方</summary>
+          <ol>
+            <li><a href="https://www.ap-siken.com/apkakomon.php" target="_blank" rel="noopener">過去問道場</a>で問題を解く。</li>
+            <li>「成績詳細」（模擬試験モードの場合は「前問までの成績を見る」 ）を開く。</li>
+            <li>「CSV形式でダウンロード」を選択して保存。</li>
+            <li>このページの「CSVファイル選択」からダウンロードしたCSVファイルを選択（複数選択可）。</li>
+            <li>「読み込む」を押し、分野・大分類・中分類ごとの正解率と件数を表示。</li>
+          </ol>
+          <p class="muted">※ 「苦手判定しきい値」を調整すると、どの正解率以下を「苦手」とみなすかを変更できます。複数回の結果をまとめて読み込むと苦手の傾向をより正確に把握できます。</p>
+        </details>
+
+        <footer>© CSV正解率チェッカー</footer>
+      </div>
+    </div>
+  </div>
+
+<script>
+// --- 小さめのCSVパーサ（ダブルクォート対応） ---
+function parseCSV(text) {
+  const rows = [];
+  let i = 0, field = '', row = [], inQuotes = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* ignore */ }
+      else { field += c; }
+    }
+    i++;
+  }
+  // 最終フィールド
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function sjisToText(arrayBuffer) {
+  try {
+    const decoder = new TextDecoder('shift_jis');
+    return decoder.decode(arrayBuffer);
+  } catch (e) {
+    // fallback: UTF-8
+    return new TextDecoder('utf-8').decode(arrayBuffer);
+  }
+}
+
+function pct(a, b) {
+  if (!b) return 0;
+  return (a / b) * 100;
+}
+
+function fmtPct(x) { return `${x.toFixed(1)}%`; }
+
+// 統計オブジェクト生成（順序維持）
+function makeOrderedCounter() {
+  const names = []; // 表示順
+  const index = new Map(); // name -> idx
+  const q = []; // 問題数
+  const a = []; // 正解数
+  function touch(name) {
+    if (!index.has(name)) { index.set(name, names.length); names.push(name); q.push(0); a.push(0); }
+    return index.get(name);
+  }
+  function add(name, correct) {
+    const i = touch(name);
+    q[i] += 1; if (correct) a[i] += 1;
+  }
+  return { names, q, a, add };
+}
+
+const state = {
+  rows: [], // すべてのCSVのデータ行（ヘッダー除外）
+  totalQ: 0,
+  totalA: 0,
+  field: null,
+  major: null,
+  middle: null,
+};
+
+async function readAll(files) {
+  const allRows = [];
+  for (const f of files) {
+    const buf = await f.arrayBuffer();
+    const text = sjisToText(buf);
+    const rows = parseCSV(text);
+    if (rows.length <= 1) continue; // 空 or ヘッダのみ
+    for (let i = 1; i < rows.length; i++) { // 1行目はヘッダー
+      const r = rows[i];
+      if (!r || r.length < 5) continue; // 列不足は無視
+      allRows.push(r);
+    }
+  }
+  return allRows;
+}
+
+function compute() {
+  const rows = state.rows;
+  let totalQ = 0, totalA = 0;
+  const field = makeOrderedCounter();
+  const major = makeOrderedCounter();
+  const middle = makeOrderedCounter();
+
+  for (const r of rows) {
+    const correct = (r[1] === '○');
+    totalQ += 1; if (correct) totalA += 1;
+    field.add(r[2], correct);
+    major.add(r[3], correct);
+    middle.add(r[4], correct);
+  }
+
+  state.totalQ = totalQ; state.totalA = totalA;
+  state.field = field; state.major = major; state.middle = middle;
+}
+
+function render() {
+  const metrics = document.getElementById('metrics');
+  const tables = document.getElementById('tables');
+  const totalQ = document.getElementById('totalQ');
+  const totalA = document.getElementById('totalA');
+  const totalR = document.getElementById('totalR');
+  const avgHint = document.getElementById('avgHint');
+
+  const avg = pct(state.totalA, state.totalQ);
+  totalQ.textContent = `問題数: ${state.totalQ}`;
+  totalA.textContent = `正解数: ${state.totalA}`;
+  totalR.textContent = `正解率: ${fmtPct(avg)}`;
+
+  metrics.style.display = 'flex';
+  tables.style.display = 'grid';
+
+  const threshold = Number(document.getElementById('threshold').value || 0);
+
+  fillTable('tblField', state.field, threshold);
+  fillTable('tblMajor', state.major, threshold);
+  fillTable('tblMiddle', state.middle, threshold);
+}
+
+function fillTable(tblId, counter, threshold) {
+  const tbody = document.querySelector(`#${tblId} tbody`);
+  tbody.innerHTML = '';
+  counter.names.forEach((name, i) => {
+    const q = counter.q[i];
+    const a = counter.a[i];
+    const rate = pct(a, q);
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    tdName.textContent = name;
+
+    const tdRate = document.createElement('td');
+    tdRate.textContent = fmtPct(rate);
+
+    const tdBreak = document.createElement('td');
+    tdBreak.textContent = `${a}/${q}`;
+
+    const tdBadge = document.createElement('td');
+    const span = document.createElement('span');
+    span.className = 'pill ' + (rate <= threshold ? 'bad' : 'good');
+    span.textContent = (rate <= threshold) ? '苦手' : 'OK';
+    tdBadge.appendChild(span);
+
+    tr.appendChild(tdName);
+    tr.appendChild(tdRate);
+    tr.appendChild(tdBreak);
+    tr.appendChild(tdBadge);
+    tbody.appendChild(tr);
+  });
+}
+
+// --- イベント ---
+const fileInput = document.getElementById('fileInput');
+const loadBtn = document.getElementById('loadBtn');
+const recalcBtn = document.getElementById('recalcBtn');
+
+loadBtn.addEventListener('click', async () => {
+  const files = fileInput.files;
+  if (!files || files.length === 0) {
+    alert('CSVファイルを選択してください。');
+    return;
+  }
+  try {
+    const rows = await readAll(files);
+    if (rows.length === 0) {
+      alert('データ行が見つかりませんでした。CSVの中身を確認してください。');
+      return;
+    }
+    state.rows = rows;
+    compute();
+    render();
+  } catch (e) {
+    console.error(e);
+    alert('読み込み中にエラーが発生しました。CSVの文字コードや形式を確認してください。');
+  }
+});
+
+recalcBtn.addEventListener('click', () => {
+  if (!state.rows.length) {
+    alert('先にCSVを読み込んでください。');
+    return;
+  }
+  render();
+});
+</script>
+</body>
+</html>
